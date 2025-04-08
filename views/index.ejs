@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Suricata Logs</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<h1>Suricata Logs Viewer</h1>
+<div class="tabs">
+    <ul class="tab-list">
+        <% Object.keys(logs).forEach((key, index) => { %>
+            <li class="tab <%= index === 0 ? 'active' : '' %>" data-tab="tab-<%= index %>" data-log="<%= key %>"><%= key %></li>
+        <% }) %>
+    </ul>
+    <% Object.entries(logs).forEach(([key, content], index) => { %>
+        <div class="tab-content <%= index === 0 ? 'active' : '' %>" id="tab-<%= index %>">
+            <% if (Array.isArray(content)) { %>
+                <% if (key === 'Eve JSON') { %>
+                    <div id="eve-log-container" class="log-container" style="max-height:600px; overflow-y:auto;">
+                        <div class="log-table">
+                            <table>
+                                <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Source:PORT</th>
+                                    <th>Dest:PORT</th>
+                                    <th>Proto</th>
+                                    <th>Alert</th>
+                                    <th>Confidence</th>
+                                    <th>Domain</th>
+                                </tr>
+                                </thead>
+                                <tbody id="eve-log-tbody">
+                                <% content.slice(0, 100).forEach(entry => { %>
+                                    <tr>
+                                        <td><%= entry.timestamp %></td>
+                                        <td><%= entry.src_ip %>:<%= entry.src_port %></td>
+                                        <td><%= entry.dest_ip %>:<%= entry.dest_port %></td>
+                                        <td><%= entry.proto %></td>
+                                        <td><%= entry.alert %></td>
+                                        <td><%= entry.confidence %></td>
+                                        <td><%= entry.domain %></td>
+                                    </tr>
+                                <% }) %>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                <% } else { %>
+                    <pre class="log-text"><%= content.join('\n') %></pre>
+                <% } %>
+            <% } else { %>
+                <pre class="log-text"><%= content %></pre>
+            <% } %>
+        </div>
+    <% }) %>
+</div>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const endpoints = {
+            "Suricata Log": "/logs/suricata-log",
+            "Suricata Start": "/logs/suricata-start",
+            "Fast Log": "/logs/fast-log",
+            "Stats": "/logs/stats"
+        };
+
+        const tabs = document.querySelectorAll('.tab');
+        const contents = document.querySelectorAll('.tab-content');
+
+        function activateTab(index) {
+            tabs.forEach(tab => tab.classList.remove('active'));
+            contents.forEach(content => content.classList.remove('active'));
+            tabs[index].classList.add('active');
+            contents[index].classList.add('active');
+            const logType = tabs[index].dataset.log;
+            window.location.hash = encodeURIComponent(logType);
+            if (logType !== "Eve JSON") {
+                fetch(endpoints[logType])
+                    .then(response => response.json())
+                    .then(data => {
+                        contents[index].innerHTML = '<pre class="log-text">' + data.content + '</pre>';
+                    })
+                    .catch(err => {
+                        contents[index].innerHTML = '<pre class="log-text">Error: ' + err.message + '</pre>';
+                    });
+            }
+        }
+
+        function getTabIndexFromHash() {
+            const hash = decodeURIComponent(window.location.hash.slice(1));
+            let index = 0;
+            tabs.forEach((tab, i) => {
+                if(tab.dataset.log === hash) index = i;
+            });
+            return index;
+        }
+        activateTab(getTabIndexFromHash());
+
+        tabs.forEach((tab, index) => {
+            tab.addEventListener('click', () => activateTab(index));
+        });
+
+        const eveLogContainer = document.getElementById('eve-log-container');
+        if(eveLogContainer){
+            let offset = 100;
+            let loading = false;
+            eveLogContainer.addEventListener('scroll', () => {
+                if(eveLogContainer.scrollTop + eveLogContainer.clientHeight >= eveLogContainer.scrollHeight){
+                    if(!loading){
+                        loading = true;
+                        fetch(`/logs/eve?offset=${offset}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if(data.length){
+                                    const tbody = document.getElementById('eve-log-tbody');
+                                    data.forEach(entry => {
+                                        const tr = document.createElement('tr');
+                                        const tdTimestamp = document.createElement('td');
+                                        tdTimestamp.textContent = entry.timestamp;
+                                        tr.appendChild(tdTimestamp);
+                                        const tdSource = document.createElement('td');
+                                        tdSource.textContent = entry.src_ip + ':' + entry.src_port;
+                                        tr.appendChild(tdSource);
+                                        const tdDest = document.createElement('td');
+                                        tdDest.textContent = entry.dest_ip + ':' + entry.dest_port;
+                                        tr.appendChild(tdDest);
+                                        const tdProto = document.createElement('td');
+                                        tdProto.textContent = entry.proto;
+                                        tr.appendChild(tdProto);
+                                        const tdAlert = document.createElement('td');
+                                        tdAlert.textContent = entry.alert;
+                                        tr.appendChild(tdAlert);
+                                        const tdConfidence = document.createElement('td');
+                                        tdConfidence.textContent = entry.confidence;
+                                        tr.appendChild(tdConfidence);
+                                        const tdDomain = document.createElement('td');
+                                        tdDomain.textContent = entry.domain;
+                                        tr.appendChild(tdDomain);
+                                        tbody.appendChild(tr);
+                                    });
+                                    offset += 100;
+                                }
+                                loading = false;
+                            })
+                            .catch(() => { loading = false; });
+                    }
+                }
+            });
+        }
+    });
+</script>
+</body>
+</html>
